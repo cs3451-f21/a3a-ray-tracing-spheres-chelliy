@@ -1,3 +1,4 @@
+[![Open in Visual Studio Code](https://classroom.github.com/assets/open-in-vscode-f059dc9a6f8d3a56e377f745f24479a46679e63a5d9fe6f495e02850cd0d8118.svg)](https://classroom.github.com/online_ide?assignment_repo_id=6097372&assignment_repo_type=AssignmentRepo)
 # Assignment 3a:  Ray Tracing Spheres
 
 The goal of this project is to write a ray tracing renderer. You will write a collection of Javascript functions that, when called, will create a 3D scene and produce 2D images of the scene. One of the functions will initialize the scene, others will create objects, lights and a virtual camera, and one additional function will determine the color of a ray cast into the scene, that will be used to render the scene into a 2D image. You will be provided with various scenes that will call your functions to test your ray tracing code.
