@@ -44,11 +44,34 @@ export class Color {
     }
 }
 
+interface light {
+    color: Color;
+    pos: Vector;
+    abient: boolean;
+}
+
 interface Ray {
     start: Vector;
     dir: Vector;
 }
 
+interface Eye {
+    u: Vector;
+    v: Vector;
+    w: Vector;
+    pos: Vector;
+}
+
+interface sphere {
+    pos: Vector;
+    radius: number; 
+    dr: number;
+    dg: number; 
+    db: number; 
+    k_ambient: number; 
+    k_specular: number; 
+    specular_pow: number;
+}
 
 // A class for our application state and functionality
 class RayTracer {
@@ -64,7 +87,13 @@ class RayTracer {
     canvasColor = "lightyellow"
 
     canv: HTMLCanvasElement
-    ctx: CanvasRenderingContext2D 
+    ctx: CanvasRenderingContext2D
+    pointlights: light[]
+    ambientligh: light | null
+    backgroundcolor: Color | null
+    fov: number;
+    eye: Eye|null;
+    spheres: sphere[];
 
     // div is the HTMLElement we'll add our canvas to
     // width, height are the size of the canvas
@@ -77,6 +106,14 @@ class RayTracer {
         // let's create a canvas and to draw in
         this.canv = document.createElement("canvas");
         this.ctx = this.canv.getContext("2d")!;
+
+        this.pointlights = []
+        this.ambientligh = null
+        this.backgroundcolor = null
+        this.fov = 90
+        this.eye = null
+        this.spheres = []
+
         if (!this.ctx) {
             console.warn("our drawing element does not have a 2d drawing context")
             return
@@ -95,23 +132,37 @@ class RayTracer {
 
     // clear out all scene contents
     reset_scene() {
+        this.clear_screen();
+        this.pointlights = []
+        this.ambientligh = null
+        this.backgroundcolor = null
+        this.set_eye(0,0,0,0,0,-1,0,1,0)
+        this.spheres = []
+
     }
 
     // create a new point light source
     new_light (r: number, g: number, b: number, x: number, y: number, z: number) {
+
+        var newlight:light = {color:new Color(r,g,b), pos:new Vector(x, y, z), abient:false}
+        this.pointlights.push(newlight)
     }
 
     // set value of ambient light source
     ambient_light (r: number, g: number, b: number) {
+    
+        var newlight:light = {color:new Color(r,g,b), pos:new Vector(0, 0, 0), abient:true}
     }
 
     // set the background color for the scene
     set_background (r: number, g: number, b: number) {
+        this.backgroundcolor = new Color(r, g, b)
     }
 
     // set the field of view
     DEG2RAD = (Math.PI/180)
     set_fov (theta: number) {
+        this.fov = theta
     }
 
     // set the virtual camera's position and orientation
@@ -121,12 +172,25 @@ class RayTracer {
     set_eye(x1: number, y1: number, z1: number, 
             x2: number, y2: number, z2: number, 
             x3: number, y3: number, z3: number) {
+        
+        var w:Vector = new Vector((x2 - x1), (y2 - y1), (z2 - z1))
+        var u:Vector = Vector.cross(w, new Vector(x3,y3,z3))
+        var v:Vector = Vector.cross(w, u)
+        var pos:Vector = new Vector(x1,y1,z1)
+        this.eye = {u:u, v:v, w:w, pos:pos}
+        
     }
 
     // create a new sphere
     new_sphere (x: number, y: number, z: number, radius: number, 
                 dr: number, dg: number, db: number, 
                 k_ambient: number, k_specular: number, specular_pow: number) {
+        
+        var pos = new Vector(x,y,z)
+        var current:sphere = {pos, radius: radius, dr: dr, dg: dg, db: db, 
+            k_ambient: k_ambient, k_specular: k_specular, specular_pow: specular_pow}
+        this.spheres.push(current)
+
     }
 
     // INTERNAL METHODS YOU MUST IMPLEMENT
