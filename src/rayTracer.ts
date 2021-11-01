@@ -31,6 +31,7 @@ export class Color {
     static scale(k: number, v: Color) { return new Color(k * v.r, k * v.g, k * v.b); }
     static plus(v1: Color, v2: Color) { return new Color(v1.r + v2.r, v1.g + v2.g, v1.b + v2.b); }
     static times(v1: Color, v2: Color) { return new Color(v1.r * v2.r, v1.g * v2.g, v1.b * v2.b); }
+    static scalartimes(k: number, v: Color) { return new Color(k * v.r, k * v.g, k * v.b); }
     static white = new Color(1.0, 1.0, 1.0);
     static grey = new Color(0.5, 0.5, 0.5);
     static black = new Color(0.0, 0.0, 0.0);
@@ -47,7 +48,6 @@ export class Color {
 interface light {
     color: Color;
     pos: Vector;
-    abient: boolean;
 }
 
 interface Ray {
@@ -65,9 +65,7 @@ interface Eye {
 interface sphere {
     pos: Vector;
     radius: number; 
-    dr: number;
-    dg: number; 
-    db: number; 
+    color: Color; 
     k_ambient: number; 
     k_specular: number; 
     specular_pow: number;
@@ -89,10 +87,10 @@ class RayTracer {
     canv: HTMLCanvasElement
     ctx: CanvasRenderingContext2D
     pointlights: light[]
-    ambientligh: light | null
-    backgroundcolor: Color | null
+    ambientligh: light
+    backgroundcolor: Color
     fov: number;
-    eye: Eye|null;
+    eye: Eye;
     spheres: sphere[];
 
     // div is the HTMLElement we'll add our canvas to
@@ -108,10 +106,10 @@ class RayTracer {
         this.ctx = this.canv.getContext("2d")!;
 
         this.pointlights = []
-        this.ambientligh = null
-        this.backgroundcolor = null
+        this.ambientligh = {color:Color.white, pos:new Vector(0,0,0)}
+        this.backgroundcolor = Color.grey
         this.fov = 90
-        this.eye = null
+        this.eye = {u:new Vector(0,0,0), v:new Vector(0,0,-1), w:new Vector(0,1,0), pos:new Vector(0,0,0)}
         this.spheres = []
 
         if (!this.ctx) {
@@ -134,8 +132,8 @@ class RayTracer {
     reset_scene() {
         this.clear_screen();
         this.pointlights = []
-        this.ambientligh = null
-        this.backgroundcolor = null
+        this.ambientligh = {color:Color.white, pos:new Vector(0,0,0)}
+        this.backgroundcolor = Color.grey
         this.set_eye(0,0,0,0,0,-1,0,1,0)
         this.spheres = []
 
@@ -144,14 +142,15 @@ class RayTracer {
     // create a new point light source
     new_light (r: number, g: number, b: number, x: number, y: number, z: number) {
 
-        var newlight:light = {color:new Color(r,g,b), pos:new Vector(x, y, z), abient:false}
+        var newlight:light = {color:new Color(r,g,b), pos:new Vector(x, y, z)}
         this.pointlights.push(newlight)
     }
 
     // set value of ambient light source
     ambient_light (r: number, g: number, b: number) {
     
-        var newlight:light = {color:new Color(r,g,b), pos:new Vector(0, 0, 0), abient:true}
+        var newlight:light = {color:new Color(r,g,b), pos:new Vector(0, 0, 0)}
+        this.ambientligh = newlight
     }
 
     // set the background color for the scene
@@ -173,9 +172,12 @@ class RayTracer {
             x2: number, y2: number, z2: number, 
             x3: number, y3: number, z3: number) {
         
-        var w:Vector = new Vector((x2 - x1), (y2 - y1), (z2 - z1))
+        var w:Vector = new Vector(-(x2 - x1), -(y2 - y1), -(z2 - z1))
+        w = Vector.norm(w)
         var u:Vector = Vector.cross(w, new Vector(x3,y3,z3))
-        var v:Vector = Vector.cross(w, u)
+        u = Vector.norm(u)
+        var v:Vector = Vector.cross(w,  u)
+        v = Vector.norm(v)
         var pos:Vector = new Vector(x1,y1,z1)
         this.eye = {u:u, v:v, w:w, pos:pos}
         
@@ -187,7 +189,7 @@ class RayTracer {
                 k_ambient: number, k_specular: number, specular_pow: number) {
         
         var pos = new Vector(x,y,z)
-        var current:sphere = {pos, radius: radius, dr: dr, dg: dg, db: db, 
+        var current:sphere = {pos:pos, radius: radius, color: new Color(dr,dg,db), 
             k_ambient: k_ambient, k_specular: k_specular, specular_pow: specular_pow}
         this.spheres.push(current)
 
@@ -197,9 +199,97 @@ class RayTracer {
 
     // create an eye ray based on the current pixel's position
     private eyeRay(i: number, j: number): Ray {
+        var d:number = 1/Math.tan(this.fov/2*this.DEG2RAD)
+        var us:number = -1 + 2*i/this.screenWidth
+        var vs:number = -1 + 2*j/this.screenHeight
+        var dir:Vector = Vector.plus(
+            Vector.plus(
+                Vector.times(us, this.eye.u), 
+                Vector.times(vs, this.eye.v)
+            )
+            , 
+            Vector.times(-d, this.eye.w)
+        )
+        var output:Ray = {start:this.eye.pos, dir:dir}
+        return output
+        
     }
 
     private traceRay(ray: Ray, depth: number = 0): Color {
+        var record:sphere = this.spheres[0]
+        var recordT:number = 9999999
+        var e = ray.start
+        var d = ray.dir
+        this.spheres.forEach(function (sphere) {
+            var c = sphere.pos
+            var R = sphere.radius
+            var eMc = Vector.minus(e, c)
+            //check b^2-4ac
+            var b = Vector.dot(d, eMc)
+            var bSquare = Math.pow(b, 2)
+            var ac = Vector.dot(d, d) * (Vector.dot(eMc, eMc) - R*R)
+            var check = (bSquare - ac)
+            if (check >= 0) {  
+                var currentT1:number = (-b + Math.sqrt(check))/Vector.dot(d,d)
+                var currentT2:number = (-b - Math.sqrt(check))/Vector.dot(d,d)
+                if (check == 0) {
+                    if (currentT2 < recordT) {
+                        recordT = currentT2
+                        record = sphere   
+                        console.log("1")   
+                    }
+                }else{
+                    var min:number = 0
+                    if (currentT1 > currentT2) {
+                        min = currentT2                        
+                    }else{
+                        min = currentT1
+                    }
+                    if (min < recordT) {
+                        console.log("2")   
+                        recordT = min      
+                        record = sphere                  
+                    }
+                }
+            }
+        })
+
+
+        if(recordT == 9999999){
+            return this.backgroundcolor
+        }else{
+            var sum = new Color(0,0,0)
+            var point = Vector.plus(e, Vector.times(recordT, d))
+            var n = Vector.times(1/record.radius, Vector.minus(point, record.pos))
+            var ambientColor = this.ambientligh?.color
+            var kd = record.color
+            var ka = record.k_ambient
+            var ks = new Color(record.k_specular, record.k_specular, record.k_specular)
+            var sp = record.specular_pow
+            var V = ray.dir
+            this.pointlights.forEach(function(light){
+                var l = Vector.minus(light.pos, point)
+                var Ri = Vector.minus(
+                    Vector.times(2, Vector.times(Vector.dot(l, n), n)),
+                    l
+                )
+                var Rivpi = Math.pow(Vector.dot(Ri, V), sp)
+
+                var right = Color.scalartimes(Rivpi, ks)
+
+                var left = Color.scalartimes(Vector.dot(n,l), kd)
+
+                var final = Color.times(light.color, Color.plus(right, left))
+
+                sum = Color.plus(final, sum)
+            })
+
+            sum = Color.plus(sum, Color.scalartimes(ka, ambientColor))
+
+            return sum
+        }
+
+        
     }
 
     // draw_scene is provided to create the image from the ray traced colors. 
