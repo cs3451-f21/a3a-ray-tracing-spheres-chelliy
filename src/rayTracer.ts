@@ -88,6 +88,7 @@ class RayTracer {
     ctx: CanvasRenderingContext2D
     pointlights: light[]
     ambientligh: light
+    ambient:boolean
     backgroundcolor: Color
     fov: number;
     eye: Eye;
@@ -108,6 +109,7 @@ class RayTracer {
         this.pointlights = []
         this.ambientligh = {color:Color.white, pos:new Vector(0,0,0)}
         this.backgroundcolor = Color.grey
+        this.ambient = false
         this.fov = 90
         this.eye = {u:new Vector(0,0,0), v:new Vector(0,0,-1), w:new Vector(0,1,0), pos:new Vector(0,0,0)}
         this.spheres = []
@@ -136,6 +138,7 @@ class RayTracer {
         this.backgroundcolor = Color.grey
         this.set_eye(0,0,0,0,0,-1,0,1,0)
         this.spheres = []
+        this.ambient = false
 
     }
 
@@ -151,6 +154,7 @@ class RayTracer {
     
         var newlight:light = {color:new Color(r,g,b), pos:new Vector(0, 0, 0)}
         this.ambientligh = newlight
+        this.ambient = true
     }
 
     // set the background color for the scene
@@ -174,10 +178,10 @@ class RayTracer {
         
         var w:Vector = new Vector(-(x2 - x1), -(y2 - y1), -(z2 - z1))
         w = Vector.norm(w)
-        var u:Vector = Vector.cross(w, new Vector(x3,y3,z3))
-        u = Vector.norm(u)
-        var v:Vector = Vector.cross(w,  u)
+        var v:Vector = new Vector(x3,y3,z3)
         v = Vector.norm(v)
+        var u:Vector = Vector.cross(v, w)
+        u = Vector.norm(u)
         var pos:Vector = new Vector(x1,y1,z1)
         this.eye = {u:u, v:v, w:w, pos:pos}
         
@@ -199,13 +203,13 @@ class RayTracer {
 
     // create an eye ray based on the current pixel's position
     private eyeRay(i: number, j: number): Ray {
-        var d:number = 1/Math.tan(this.fov/2*this.DEG2RAD)
+        var d:number = 1/Math.tan(this.DEG2RAD*this.fov/2)
         var us:number = -1 + 2*i/this.screenWidth
         var vs:number = -1 + 2*j/this.screenHeight
         var dir:Vector = Vector.plus(
             Vector.plus(
                 Vector.times(us, this.eye.u), 
-                Vector.times(vs, this.eye.v)
+                Vector.times(-vs, this.eye.v)
             )
             , 
             Vector.times(-d, this.eye.w)
@@ -235,8 +239,7 @@ class RayTracer {
                 if (check == 0) {
                     if (currentT2 < recordT) {
                         recordT = currentT2
-                        record = sphere   
-                        console.log("1")   
+                        record = sphere    
                     }
                 }else{
                     var min:number = 0
@@ -245,8 +248,7 @@ class RayTracer {
                     }else{
                         min = currentT1
                     }
-                    if (min < recordT) {
-                        console.log("2")   
+                    if (min < recordT) {  
                         recordT = min      
                         record = sphere                  
                     }
@@ -261,30 +263,45 @@ class RayTracer {
             var sum = new Color(0,0,0)
             var point = Vector.plus(e, Vector.times(recordT, d))
             var n = Vector.times(1/record.radius, Vector.minus(point, record.pos))
-            var ambientColor = this.ambientligh?.color
+            n = Vector.norm(n)
             var kd = record.color
             var ka = record.k_ambient
             var ks = new Color(record.k_specular, record.k_specular, record.k_specular)
             var sp = record.specular_pow
             var V = ray.dir
+            V = Vector.norm(V)
             this.pointlights.forEach(function(light){
                 var l = Vector.minus(light.pos, point)
+                l = Vector.norm(l)
                 var Ri = Vector.minus(
                     Vector.times(2, Vector.times(Vector.dot(l, n), n)),
                     l
                 )
-                var Rivpi = Math.pow(Vector.dot(Ri, V), sp)
+                Ri = Vector.norm(Ri)
+                
+                var Riv = Vector.dot(Ri, V)
+                
+                var Rivpi = Math.pow(Riv, sp)
 
                 var right = Color.scalartimes(Rivpi, ks)
 
                 var left = Color.scalartimes(Vector.dot(n,l), kd)
+                
+                var finalsum = left
 
-                var final = Color.times(light.color, Color.plus(right, left))
+                if (Riv < 0) {
+                    finalsum = Color.plus(right, left)
+                }
+
+                var final = Color.times(light.color, finalsum)
 
                 sum = Color.plus(final, sum)
             })
 
-            sum = Color.plus(sum, Color.scalartimes(ka, ambientColor))
+            var ambientColor = this.ambientligh.color
+            if(this.ambient == true){
+                sum = Color.plus(sum, Color.times(Color.scalartimes(ka, ambientColor), kd))
+            }
 
             return sum
         }
@@ -311,6 +328,7 @@ class RayTracer {
             for (var x = 0; x < this.screenWidth; x++) {
 
                 var ray = this.eyeRay(x, y);
+                console.log(ray)
                 var c = this.traceRay(ray);
 
                 var color = Color.toDrawingColor(c)
