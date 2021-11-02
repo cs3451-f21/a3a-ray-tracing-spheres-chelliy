@@ -179,9 +179,11 @@ class RayTracer {
         var w:Vector = new Vector(-(x2 - x1), -(y2 - y1), -(z2 - z1))
         w = Vector.norm(w)
         var v:Vector = new Vector(x3,y3,z3)
-        v = Vector.norm(v)
+        // v = Vector.norm(v)
         var u:Vector = Vector.cross(v, w)
         u = Vector.norm(u)
+        v = Vector.cross(u, w)
+        v = Vector.norm(v)
         var pos:Vector = new Vector(x1,y1,z1)
         this.eye = {u:u, v:v, w:w, pos:pos}
         
@@ -203,17 +205,20 @@ class RayTracer {
 
     // create an eye ray based on the current pixel's position
     private eyeRay(i: number, j: number): Ray {
-        var d:number = 1/Math.tan(this.DEG2RAD*this.fov/2)
-        var us:number = -1 + 2*i/this.screenWidth
-        var vs:number = -1 + 2*j/this.screenHeight
+        var d:number = -1/Math.tan(this.DEG2RAD*this.fov/2)
+        var us:number = -1 + 2*i/this.screenWidth + 1/this.screenWidth
+        var vs:number = -1 + 2*j/this.screenHeight + 1/this.screenHeight
+        // var us:number = -1 + 2*i/this.screenWidth
+        // var vs:number = -1 + 2*j/this.screenHeight
         var dir:Vector = Vector.plus(
             Vector.plus(
                 Vector.times(us, this.eye.u), 
-                Vector.times(-vs, this.eye.v)
+                Vector.times(vs, this.eye.v)
             )
             , 
-            Vector.times(-d, this.eye.w)
+            Vector.times(d, this.eye.w)
         )
+        dir = Vector.norm(dir)
         var output:Ray = {start:this.eye.pos, dir:dir}
         return output
         
@@ -262,13 +267,15 @@ class RayTracer {
         }else{
             var sum = new Color(0,0,0)
             var point = Vector.plus(e, Vector.times(recordT, d))
-            var n = Vector.times(1/record.radius, Vector.minus(point, record.pos))
+            // var n = Vector.times(1/record.radius, Vector.minus(point, record.pos))
+            var n = Vector.minus(point, record.pos)
             n = Vector.norm(n)
             var kd = record.color
             var ka = record.k_ambient
             var ks = new Color(record.k_specular, record.k_specular, record.k_specular)
             var sp = record.specular_pow
             var V = ray.dir
+            V = Vector.times(-1, V)
             V = Vector.norm(V)
             this.pointlights.forEach(function(light){
                 var l = Vector.minus(light.pos, point)
@@ -280,18 +287,18 @@ class RayTracer {
                 Ri = Vector.norm(Ri)
                 
                 var Riv = Vector.dot(Ri, V)
-                
+
+                if (Vector.dot(Ri,l) <= 0) {
+                    Riv = 0
+                }
+
                 var Rivpi = Math.pow(Riv, sp)
 
-                var right = Color.scalartimes(Rivpi, ks)
+                var specular = Color.scalartimes(Rivpi, ks)
 
-                var left = Color.scalartimes(Vector.dot(n,l), kd)
+                var diffuse = Color.scalartimes(Vector.dot(n,l), kd)
                 
-                var finalsum = left
-
-                if (Riv < 0) {
-                    finalsum = Color.plus(right, left)
-                }
+                var finalsum = Color.plus(specular, diffuse)
 
                 var final = Color.times(light.color, finalsum)
 
